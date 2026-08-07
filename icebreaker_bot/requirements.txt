@@ -1,0 +1,11 @@
+# Core LlamaIndex stack
+llama-index-core
+llama-index-llms-openai
+llama-index-embeddings-openai
+
+# HTTP + env
+requests
+python-dotenv
+
+# UI
+gradio

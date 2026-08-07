@@ -1,0 +1,66 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+ENV/
+*/venv/
+*/.venv/
+*/env/
+
+# --- Environment variables / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# --- Vector DB / local data stores ---
+chroma_db/
+chromadb_data/
+*.sqlite3
+*.db
+.chroma/
+
+# --- Logs & caches ---
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.gradio/
+*/.gradio/
+
+# --- Node (in case any tooling adds it) ---
+node_modules/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Editor/IDE (keep shared workspace settings, ignore user-specific state) ---
+.idea/
+*.swp
+
+# --- Model weights / large artifacts ---
+*.bin
+*.gguf
+*.pt
+*.pth
+*.ckpt
