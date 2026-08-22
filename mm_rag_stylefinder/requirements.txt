@@ -1,0 +1,11 @@
+openai
+python-dotenv
+torch
+torchvision
+scikit-learn
+pillow
+requests
+pandas
+numpy
+gradio
+google-search-results

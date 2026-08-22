@@ -1,0 +1,9 @@
+transformers
+torch
+gradio
+langchain
+langchain-community
+langchain-openai
+openai
+pydantic
+python-dotenv
