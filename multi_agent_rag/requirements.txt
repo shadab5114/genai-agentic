@@ -1,0 +1,25 @@
+# LLM (OpenAI)
+openai
+langchain
+langchain-core
+langchain-classic
+langchain-community
+langchain-openai
+langchain-text-splitters
+langgraph
+
+# Document processing
+docling
+pypdf
+
+# Retrieval
+chromadb
+rank-bm25
+
+# UI
+gradio
+
+# Config & utils
+pydantic-settings
+python-dotenv
+loguru
