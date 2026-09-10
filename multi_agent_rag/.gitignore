@@ -5,3 +5,9 @@ chroma_db/
 venv/
 app.log
 .DS_Store
+
+# Pre-downloaded docling models (HF downloads blocked on corp network).
+# ~1.4GB of binary weights - don't commit to git. Push to your internal
+# artifact store (Artifactory/Nexus/S3) instead and fetch on setup.
+# See docling_models/README.md for how this was produced and how to restore it.
+docling_models/

@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Architecture note for an agentic dev platform: system map, durable task state machine, verification gate ladder, context budget, and a worked end-to-end example.">
+<title>Agent Delivery Plane</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#EEF1F4;
+  --surface:#FFFFFF;
+  --surface-2:#F5F8FA;
+  --ink:#12181F;
+  --ink-2:#46525E;
+  --ink-3:#6E7C89;
+  --rule:#D3DAE1;
+  --rule-2:#E4E9EE;
+  --accent:#0B5C9E;
+  --accent-soft:#E3EDF6;
+  --human:#6B3FA0;
+  --human-soft:#EFE8F8;
+  --pass:#17703F;
+  --warn:#9A5B06;
+  --stop:#A32A20;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --sans:"IBM Plex Sans","Segoe UI",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0D1219;
+    --surface:#151C24;
+    --surface-2:#1B242D;
+    --ink:#E6EBF0;
+    --ink-2:#A9B6C2;
+    --ink-3:#7C8A97;
+    --rule:#2C3742;
+    --rule-2:#232D37;
+    --accent:#57A8E6;
+    --accent-soft:#123047;
+    --human:#B195DF;
+    --human-soft:#261D36;
+    --pass:#46B67D;
+    --warn:#DB9A2F;
+    --stop:#E47563;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0D1219;
+  --surface:#151C24;
+  --surface-2:#1B242D;
+  --ink:#E6EBF0;
+  --ink-2:#A9B6C2;
+  --ink-3:#7C8A97;
+  --rule:#2C3742;
+  --rule-2:#232D37;
+  --accent:#57A8E6;
+  --accent-soft:#123047;
+  --human:#B195DF;
+  --human-soft:#261D36;
+  --pass:#46B67D;
+  --warn:#DB9A2F;
+  --stop:#E47563;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1264px;margin:0 auto;padding:0 24px 96px}
+.prose{max-width:68ch}
+
+/* ---- masthead ---- */
+.masthead{border-bottom:1.5px solid var(--ink);padding:40px 0 18px;margin-bottom:40px}
+.stamp{
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);display:flex;flex-wrap:wrap;gap:18px;margin-bottom:22px;
+}
+.stamp span{white-space:nowrap}
+h1{
+  font-family:var(--display);font-weight:700;font-size:clamp(34px,5.4vw,58px);
+  line-height:1.02;letter-spacing:-.025em;margin:0 0 14px;text-wrap:balance;
+}
+.standfirst{font-size:19px;line-height:1.5;color:var(--ink-2);max-width:60ch;margin:0}
+
+/* ---- sections ---- */
+section{margin-top:60px}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 10px;
+}
+h2{
+  font-family:var(--display);font-weight:600;font-size:clamp(24px,3vw,32px);
+  line-height:1.12;letter-spacing:-.018em;margin:0 0 16px;text-wrap:balance;
+}
+h3{
+  font-family:var(--display);font-weight:600;font-size:19px;letter-spacing:-.01em;
+  margin:34px 0 10px;text-wrap:balance;
+}
+p{margin:0 0 16px}
+a{color:var(--accent)}
+strong{font-weight:600;color:var(--ink)}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);border:1px solid var(--rule-2);border-radius:3px;padding:1px 5px}
+
+.lede{font-size:18px;line-height:1.55;color:var(--ink-2)}
+
+/* the single pull-quote — the constraint everything follows from */
+.axiom{
+  border-left:3px solid var(--accent);
+  background:var(--surface);
+  padding:22px 26px;margin:0 0 20px;max-width:64ch;
+}
+.axiom p{font-family:var(--display);font-weight:600;font-size:21px;line-height:1.34;letter-spacing:-.012em;margin:0}
+
+/* ---- figures ---- */
+figure{margin:28px 0 0;background:var(--surface);border:1px solid var(--rule);padding:22px 22px 6px}
+.scroll{overflow-x:auto}
+figure svg{display:block;width:100%;height:auto;min-width:880px}
+figure.narrow svg{min-width:560px;max-width:680px;margin:0 auto}
+figcaption{
+  font-size:14px;line-height:1.5;color:var(--ink-2);
+  border-top:1px solid var(--rule-2);margin-top:16px;padding:12px 0 16px;max-width:78ch;
+}
+figcaption b{font-weight:600;color:var(--ink)}
+
+/* svg internals */
+.d .box{fill:var(--surface);stroke:var(--rule);stroke-width:1.2}
+.d .box2{fill:var(--surface-2);stroke:var(--rule);stroke-width:1.2}
+.d .band{fill:var(--surface-2);stroke:var(--rule);stroke-width:1.2}
+.d .box-a{fill:var(--surface);stroke:var(--accent);stroke-width:1.6}
+.d .box-h{fill:var(--human-soft);stroke:var(--human);stroke-width:1.6}
+.d .box-p{fill:var(--surface);stroke:var(--pass);stroke-width:1.6}
+.d .box-w{fill:var(--surface);stroke:var(--warn);stroke-width:1.6}
+.d .box-focus{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2}
+.d .mask{fill:var(--surface);stroke:none}
+.d .ttl{font-family:var(--sans);font-weight:600;font-size:13px;fill:var(--ink)}
+.d .ttl-s{font-family:var(--mono);font-weight:500;font-size:10.5px;fill:var(--ink);letter-spacing:.03em}
+.d .sub{font-family:var(--mono);font-weight:400;font-size:10px;fill:var(--ink-3)}
+.d .hdr{font-family:var(--mono);font-weight:500;font-size:10px;fill:var(--ink-3);letter-spacing:.11em}
+.d .lbl{font-family:var(--mono);font-weight:400;font-size:9.5px;fill:var(--ink-2)}
+.d .lbl-a{fill:var(--accent)}
+.d .lbl-h{fill:var(--human)}
+.d .lbl-w{fill:var(--warn)}
+.d .edge{stroke:var(--ink-3);stroke-width:1.3;fill:none}
+.d .edge-a{stroke:var(--accent);stroke-width:1.5;fill:none}
+.d .edge-h{stroke:var(--human);stroke-width:1.5;fill:none}
+.d .edge-w{stroke:var(--warn);stroke-width:1.3;fill:none;stroke-dasharray:4 3}
+.d .edge-d{stroke:var(--rule);stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+.d .hd{fill:var(--ink-3)}
+.d .hd-a{fill:var(--accent)}
+.d .hd-h{fill:var(--human)}
+.d .hd-w{fill:var(--warn)}
+
+/* ---- tables ---- */
+.tablewrap{overflow-x:auto;margin:22px 0 0;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14px}
+th{
+  font-family:var(--mono);font-weight:500;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);text-align:left;padding:12px 16px;border-bottom:1.5px solid var(--rule);vertical-align:bottom;
+}
+td{padding:13px 16px;border-bottom:1px solid var(--rule-2);vertical-align:top;color:var(--ink-2);line-height:1.45}
+tr:last-child td{border-bottom:0}
+td:first-child{color:var(--ink);font-weight:500}
+td.mono,th.mono{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+
+.chip{
+  display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  padding:2px 8px;border-radius:2px;border:1px solid currentColor;white-space:nowrap;
+}
+.chip.r1{color:var(--stop)}
+.chip.r2{color:var(--warn)}
+.chip.r3{color:var(--pass)}
+.chip.n{color:var(--ink-3)}
+
+/* ---- code ---- */
+pre{
+  background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--accent);
+  padding:18px 20px;overflow-x:auto;margin:18px 0 0;
+  font-family:var(--mono);font-size:12.5px;line-height:1.65;color:var(--ink-2);
+}
+pre b{color:var(--ink);font-weight:500}
+pre i{color:var(--ink-3);font-style:normal}
+pre .k{color:var(--accent)}
+.codelabel{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);margin:26px 0 0;
+}
+
+/* ---- the walkthrough: a real sequence, so it is numbered ---- */
+.trace{list-style:none;padding:0;margin:22px 0 0;counter-reset:step;max-width:80ch}
+.trace li{
+  counter-increment:step;position:relative;padding:0 0 22px 56px;
+  border-left:1px solid var(--rule);margin-left:15px;
+}
+.trace li:last-child{border-left-color:transparent;padding-bottom:0}
+.trace li::before{
+  content:counter(step,decimal-leading-zero);
+  position:absolute;left:-15px;top:0;width:30px;height:30px;border-radius:50%;
+  background:var(--surface);border:1.5px solid var(--rule);color:var(--ink-3);
+  font-family:var(--mono);font-size:11px;display:flex;align-items:center;justify-content:center;
+}
+.trace li.human::before{border-color:var(--human);color:var(--human)}
+.trace .st{
+  display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  color:var(--accent);margin-bottom:3px;
+}
+.trace li.human .st{color:var(--human)}
+.trace .st-b{font-family:var(--display);font-weight:600;font-size:16px;color:var(--ink);display:block;margin-bottom:5px;letter-spacing:-.01em}
+.trace p{font-size:14.5px;color:var(--ink-2);margin:0 0 8px}
+.trace p:last-child{margin-bottom:0}
+
+/* ---- plain lists ---- */
+ul.tight{margin:12px 0 0;padding-left:20px;max-width:68ch}
+ul.tight li{margin-bottom:9px;color:var(--ink-2)}
+ul.tight li::marker{color:var(--ink-3)}
+
+/* ---- phases ---- */
+.phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:24px}
+.phase{background:var(--surface);padding:20px}
+.phase .wk{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--accent);text-transform:uppercase}
+.phase h4{font-family:var(--display);font-weight:600;font-size:17px;margin:6px 0 8px;letter-spacing:-.01em}
+.phase p{font-size:14px;color:var(--ink-2);margin:0 0 10px}
+.phase .done{font-size:13px;color:var(--ink-3);border-top:1px solid var(--rule-2);padding-top:9px;margin:0}
+.phase .done b{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:3px;font-weight:500}
+
+/* ---- metrics ---- */
+.metrics{border-top:1.5px solid var(--ink);margin-top:24px}
+.metric{display:flex;flex-wrap:wrap;gap:6px 24px;padding:14px 0;border-bottom:1px solid var(--rule-2)}
+.metric dt{font-family:var(--display);font-weight:600;font-size:15.5px;flex:0 0 268px}
+.metric dd{margin:0;font-size:14.5px;color:var(--ink-2);flex:1 1 300px}
+
+/* ---- callout ---- */
+.warnbox{border:1px solid var(--warn);border-left-width:3px;background:var(--surface);padding:18px 22px;margin-top:24px;max-width:72ch}
+.warnbox .h{font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--warn);margin:0 0 7px}
+.warnbox p{margin:0;font-size:14.5px;color:var(--ink-2)}
+
+.endrule{border:0;border-top:1.5px solid var(--ink);margin:64px 0 0}
+.colophon{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:14px;line-height:1.7}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media (prefers-reduced-motion:no-preference){a{transition:opacity .15s}}
+@media (max-width:640px){
+  .metric dt{flex:1 1 100%}
+  .trace li{padding-left:44px}
+}
+
+/* ============================================================
+   Standalone-document additions (not present in the artifact
+   build, where the publisher supplies the head skeleton).
+   ============================================================ */
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+img{max-width:100%}
+:root{color-scheme:light dark}
+
+/* ---- print / PDF export ----
+   Forces the light palette (dark grounds waste ink), unlocks the
+   diagram min-widths so figures fit the page, and keeps figures,
+   trace steps and table rows from splitting across pages.
+   The [data-theme] selector is needed to out-specify the dark
+   theme blocks above; this rule set is last, so it wins on tie. */
+@media print{
+  :root, :root[data-theme]{
+    --ground:#FFFFFF;
+    --surface:#FFFFFF;
+    --surface-2:#F4F7F9;
+    --ink:#000000;
+    --ink-2:#2F3841;
+    --ink-3:#57636F;
+    --rule:#B4BEC7;
+    --rule-2:#DAE0E6;
+    --accent:#08497D;
+    --human:#54317F;
+    --pass:#125C34;
+    --warn:#7C4905;
+    --stop:#8C231A;
+  }
+  @page{margin:14mm 12mm}
+  body{background:#fff;font-size:10.5pt;line-height:1.5}
+  .wrap{max-width:none;padding:0}
+  .masthead{padding-top:0}
+  h1{font-size:34pt}
+  .standfirst{font-size:13pt}
+
+  /* diagrams and tables must fit the sheet, not scroll */
+  .scroll,.tablewrap{overflow:visible}
+  figure svg,figure.narrow svg{min-width:0!important;max-width:100%!important}
+  table{min-width:0}
+  pre{white-space:pre-wrap;word-break:break-word;font-size:8.5pt}
+
+  figure,.phase,.warnbox,.axiom,.trace li,.metric,tr,.prose p{
+    break-inside:avoid;page-break-inside:avoid;
+  }
+  h2,h3,.eyebrow,.codelabel{break-after:avoid;page-break-after:avoid}
+  section{margin-top:34px}
+  a{text-decoration:none}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="stamp">
+    <span>Architecture note</span>
+    <span>Internal · draft v0.1</span>
+    <span>Platform engineering</span>
+  </div>
+  <h1>Agent Delivery Plane</h1>
+  <p class="standfirst">A harness that turns a developer instruction into a reviewed, merged pull request — and keeps going after a human leaves comments on it.</p>
+</header>
+
+<section style="margin-top:0">
+  <p class="eyebrow">The constraint</p>
+  <h2>Start here, or the rest doesn't hold</h2>
+  <div class="axiom">
+    <p>An agent's autonomy ceiling is set by the quality of the verification signal in its environment — not by the model.</p>
+  </div>
+  <div class="prose">
+    <p>If the agent can run your accessibility audit, it can fix accessibility defects unsupervised. If “correct” exists only in a senior engineer's head, no model closes that gap. So the first tranche of work is not AI work: it is making repos <strong>agent-runnable</strong> — one-command bootstrap, hermetic tests, targeted test selection, and machine-readable output from every linter, scanner, and snapshot differ you own.</p>
+    <p>Everything below assumes that groundwork. The four figures are the system: what the parts are, how a task moves through them over days, what stands between the agent and a human, and what occupies the context window while it works.</p>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">Figure 1 · System map</p>
+  <h2>Two planes and one boundary</h2>
+  <div class="prose">
+    <p>The control plane is trusted and long-lived: it holds task state, policy, and money. The execution plane is disposable and assumed hostile — it runs model-authored code against a real toolchain. Nothing crosses the boundary except a scoped task in, and events out.</p>
+  </div>
+
+  <figure>
+    <div class="scroll">
+      <svg class="d" viewBox="0 0 1220 620" role="img" aria-label="System map: trigger sources feed a trusted control plane of intake, policy and a durable orchestrator, which dispatches tasks across a sandbox boundary into an ephemeral runner containing the agent loop, tool surface, worktree and gate runner; the runner pushes to the git host, reviewers comment, and comments re-enter as new events. A shared substrate of recipes, repo maps, trajectory logs and eval sets underlies everything.">
+        <defs>
+          <marker id="m1" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd"/></marker>
+          <marker id="m1a" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd-a"/></marker>
+          <marker id="m1h" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd-h"/></marker>
+          <marker id="m1s" viewBox="0 0 10 8" refX="1" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="10,0 0,4 10,8" class="hd"/></marker>
+        </defs>
+
+        <text x="24" y="30" class="hdr">TRIGGERS</text>
+        <text x="280" y="30" class="hdr">CONTROL PLANE — TRUSTED</text>
+        <text x="656" y="30" class="hdr">EXECUTION PLANE — SANDBOXED</text>
+        <text x="1046" y="30" class="hdr">OUTSIDE</text>
+
+        <!-- triggers -->
+        <rect x="24" y="60"  width="192" height="40" rx="3" class="box"/><text x="120" y="85" class="ttl" text-anchor="middle">Jira webhook</text>
+        <rect x="24" y="108" width="192" height="40" rx="3" class="box"/><text x="120" y="133" class="ttl" text-anchor="middle">MR / PR event</text>
+        <rect x="24" y="156" width="192" height="40" rx="3" class="box"/><text x="120" y="181" class="ttl" text-anchor="middle">Slack /agent</text>
+        <rect x="24" y="204" width="192" height="40" rx="3" class="box"/><text x="120" y="229" class="ttl" text-anchor="middle">CLI · IDE</text>
+        <rect x="24" y="252" width="192" height="40" rx="3" class="box"/><text x="120" y="277" class="ttl" text-anchor="middle">Nightly sweep</text>
+        <path d="M216,80 H248 M216,128 H248 M216,176 H248 M216,224 H248 M216,272 H248 M248,80 V272" class="edge"/>
+        <path d="M248,80 H274" class="edge" marker-end="url(#m1)"/>
+
+        <!-- control plane -->
+        <rect x="280" y="58" width="312" height="44" rx="3" class="box"/>
+        <text x="294" y="76" class="ttl">Intake normalizer</text>
+        <text x="294" y="92" class="sub">classify · resolve refs · reject vague tickets</text>
+
+        <rect x="280" y="122" width="312" height="44" rx="3" class="box"/>
+        <text x="294" y="140" class="ttl">Policy &amp; budget engine</text>
+        <text x="294" y="156" class="sub">risk tier · autonomy · $ ceiling · tool ACL</text>
+
+        <rect x="280" y="186" width="312" height="76" rx="3" class="box-a"/>
+        <text x="294" y="208" class="ttl">Orchestrator</text>
+        <text x="294" y="226" class="sub">durable FSM — one row per task</text>
+        <text x="294" y="242" class="sub">survives restarts, deploys, days of waiting</text>
+
+        <rect x="280" y="286" width="312" height="44" rx="3" class="box"/>
+        <text x="294" y="304" class="ttl">Task store</text>
+        <text x="294" y="320" class="sub">state · handoff notes · budget ledger</text>
+
+        <path d="M436,102 V118" class="edge" marker-end="url(#m1)"/>
+        <path d="M436,166 V182" class="edge" marker-end="url(#m1)"/>
+        <path d="M436,266 V282" class="edge" marker-end="url(#m1)" marker-start="url(#m1s)"/>
+
+        <!-- boundary -->
+        <path d="M624,48 V396" class="edge-d"/>
+        <rect x="610" y="292" width="16" height="96" class="mask"/>
+        <text transform="translate(618,340) rotate(-90)" class="sub" text-anchor="middle">sandbox boundary</text>
+
+        <!-- cross-boundary -->
+        <path d="M592,206 H650" class="edge-a" marker-end="url(#m1a)"/>
+        <rect x="596" y="188" width="56" height="13" class="mask"/>
+        <text x="622" y="198" class="lbl lbl-a" text-anchor="middle">dispatch</text>
+        <path d="M656,250 H598" class="edge-a" marker-end="url(#m1a)"/>
+        <rect x="598" y="258" width="52" height="13" class="mask"/>
+        <text x="622" y="268" class="lbl lbl-a" text-anchor="middle">report</text>
+
+        <!-- execution plane -->
+        <rect x="656" y="48" width="354" height="348" rx="3" class="band"/>
+        <text x="670" y="68" class="sub">ephemeral runner · one per task · destroyed after</text>
+
+        <rect x="692" y="82" width="294" height="52" rx="3" class="box"/>
+        <text x="706" y="102" class="ttl">Agent loop</text>
+        <text x="706" y="118" class="sub">plan → act → observe</text>
+
+        <rect x="692" y="150" width="294" height="64" rx="3" class="box"/>
+        <text x="706" y="170" class="ttl">Tool surface (MCP)</text>
+        <text x="706" y="186" class="sub">repo · build · test · a11y scanner</text>
+        <text x="706" y="202" class="sub">figma · jira · git — scoped per recipe</text>
+
+        <rect x="692" y="230" width="294" height="44" rx="3" class="box"/>
+        <text x="706" y="248" class="ttl">Worktree + build cache</text>
+        <text x="706" y="264" class="sub">branch: agent/DS-4127-accordion-a11y</text>
+
+        <rect x="692" y="290" width="294" height="76" rx="3" class="box-a"/>
+        <text x="706" y="310" class="ttl">Gate runner</text>
+        <text x="706" y="326" class="sub">build · static · unit · oracle · diff policy</text>
+        <text x="706" y="342" class="sub">green is the only exit</text>
+
+        <path d="M839,134 V144" class="edge" marker-end="url(#m1)"/>
+        <path d="M839,214 V224" class="edge" marker-end="url(#m1)"/>
+        <path d="M839,274 V284" class="edge" marker-end="url(#m1)"/>
+        <path d="M692,328 H674 V108 H686" class="edge" marker-end="url(#m1)"/>
+        <text transform="translate(666,224) rotate(-90)" class="sub" text-anchor="middle">gate output</text>
+
+        <!-- outside -->
+        <rect x="1046" y="60"  width="150" height="40" rx="3" class="box"/><text x="1121" y="85" class="ttl" text-anchor="middle">Git host · PR</text>
+        <rect x="1046" y="116" width="150" height="40" rx="3" class="box"/><text x="1121" y="141" class="ttl" text-anchor="middle">CI runners</text>
+        <rect x="1046" y="172" width="150" height="48" rx="3" class="box-h"/>
+        <text x="1121" y="192" class="ttl" text-anchor="middle">Reviewers</text>
+        <text x="1121" y="208" class="sub" text-anchor="middle">merge authority</text>
+
+        <path d="M1010,84 H1040" class="edge" marker-end="url(#m1)"/>
+        <text x="1026" y="74" class="lbl" text-anchor="middle">push</text>
+        <path d="M1121,100 V112" class="edge" marker-end="url(#m1)"/>
+        <path d="M1121,156 V168" class="edge" marker-end="url(#m1)"/>
+
+        <!-- the loop that closes the system -->
+        <path d="M1121,220 V418 H12 V128 H20" class="edge-h" marker-end="url(#m1h)"/>
+        <text x="600" y="410" class="lbl lbl-h" text-anchor="middle">review comment re-enters as a new event</text>
+
+        <!-- substrate -->
+        <rect x="24" y="444" width="1172" height="160" rx="3" class="band"/>
+        <text x="40" y="470" class="hdr">SHARED SUBSTRATE — READ BY EVERY RUN, WRITTEN BY EVERY RUN</text>
+
+        <rect x="44" y="484" width="272" height="104" rx="3" class="box"/>
+        <text x="58" y="506" class="ttl">Recipes &amp; playbooks</text>
+        <text x="58" y="524" class="sub">per task type · versioned</text>
+        <text x="58" y="540" class="sub">gates · tool ACL · PR template</text>
+        <text x="58" y="556" class="sub">the thing you actually maintain</text>
+
+        <rect x="332" y="484" width="272" height="104" rx="3" class="box"/>
+        <text x="346" y="506" class="ttl">Repo maps &amp; retrieval</text>
+        <text x="346" y="524" class="sub">module graph · ADRs</text>
+        <text x="346" y="540" class="sub">design-system contracts</text>
+        <text x="346" y="556" class="sub">ownership (CODEOWNERS)</text>
+
+        <rect x="620" y="484" width="272" height="104" rx="3" class="box"/>
+        <text x="634" y="506" class="ttl">Trajectory log</text>
+        <text x="634" y="524" class="sub">every prompt, tool call, diff</text>
+        <text x="634" y="540" class="sub">cost + token ledger</text>
+        <text x="634" y="556" class="sub">linked from every PR</text>
+
+        <rect x="908" y="484" width="272" height="104" rx="3" class="box"/>
+        <text x="922" y="506" class="ttl">Golden eval set</text>
+        <text x="922" y="524" class="sub">past tickets, known-good diffs</text>
+        <text x="922" y="540" class="sub">regression bar for prompt edits</text>
+        <text x="922" y="556" class="sub">~100 cases to start</text>
+      </svg>
+    </div>
+    <figcaption><b>The only privileged component is the orchestrator.</b> The runner receives a task and short-lived, path-scoped credentials — never a merge token, never prod secrets, never open egress. The violet path is the one most teams forget to build: a reviewer's comment is not the end of a task, it is a new event that re-enters intake and resumes work already in flight.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <p class="eyebrow">Figure 2 · State machine</p>
+  <h2>The task outlives the process</h2>
+  <div class="prose">
+    <p>This is the difference between a demo and a system. A chat-style agent loop lives inside one process; a real task waits on a human for three days, across deploys, restarts, and a context window that no longer exists. So the lifecycle is an explicit finite state machine with each transition committed to a database — Temporal if you want durable execution for free, Postgres plus a queue if you'd rather own it.</p>
+  </div>
+
+  <figure>
+    <div class="scroll">
+      <svg class="d" viewBox="0 0 1220 400" role="img" aria-label="Task lifecycle state machine: INTAKE branches to CLARIFY when underspecified, then PLAN, IMPLEMENT, VERIFY, PR_OPEN, AWAITING_REVIEW and MERGED along the main rail. VERIFY loops back to IMPLEMENT on gate failure and to ESCALATED when the budget is spent. AWAITING_REVIEW branches to ADDRESS_FEEDBACK on a comment webhook, which re-runs gates, or to ABANDONED.">
+        <defs>
+          <marker id="m2" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd-a"/></marker>
+          <marker id="m2h" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd-h"/></marker>
+          <marker id="m2w" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd-w"/></marker>
+          <marker id="m2n" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd"/></marker>
+        </defs>
+
+        <!-- clarify branch -->
+        <rect x="98" y="36" width="104" height="44" rx="3" class="box-h"/>
+        <text x="150" y="63" class="ttl-s" text-anchor="middle">CLARIFY</text>
+        <path d="M70,118 V56 H94" class="edge-h" marker-end="url(#m2h)"/>
+        <text x="78" y="98" class="lbl lbl-h">underspecified</text>
+        <path d="M202,56 H240 V114" class="edge-h" marker-end="url(#m2h)"/>
+        <text x="248" y="52" class="lbl lbl-h">answered</text>
+
+        <!-- main rail -->
+        <rect x="18"   y="118" width="104" height="44" rx="3" class="box-a"/><text x="70"   y="145" class="ttl-s" text-anchor="middle">INTAKE</text>
+        <rect x="188"  y="118" width="104" height="44" rx="3" class="box-a"/><text x="240"  y="145" class="ttl-s" text-anchor="middle">PLAN</text>
+        <rect x="358"  y="118" width="104" height="44" rx="3" class="box-a"/><text x="410"  y="145" class="ttl-s" text-anchor="middle">IMPLEMENT</text>
+        <rect x="518"  y="118" width="104" height="44" rx="3" class="box-a"/><text x="570"  y="145" class="ttl-s" text-anchor="middle">VERIFY</text>
+        <rect x="688"  y="118" width="104" height="44" rx="3" class="box-a"/><text x="740"  y="145" class="ttl-s" text-anchor="middle">PR_OPEN</text>
+        <rect x="858"  y="118" width="124" height="44" rx="3" class="box-h"/><text x="920"  y="145" class="ttl-s" text-anchor="middle">AWAITING_REVIEW</text>
+        <rect x="1068" y="118" width="104" height="44" rx="3" class="box-p"/><text x="1120" y="145" class="ttl-s" text-anchor="middle">MERGED</text>
+
+        <path d="M122,140 H184"  class="edge-a" marker-end="url(#m2)"/><text x="153"  y="130" class="lbl lbl-a" text-anchor="middle">spec ok</text>
+        <path d="M292,140 H354"  class="edge-a" marker-end="url(#m2)"/><text x="323"  y="130" class="lbl lbl-a" text-anchor="middle">approved</text>
+        <path d="M462,140 H514"  class="edge-a" marker-end="url(#m2)"/><text x="488"  y="130" class="lbl lbl-a" text-anchor="middle">diff ready</text>
+        <path d="M622,140 H684"  class="edge-a" marker-end="url(#m2)"/><text x="653"  y="130" class="lbl lbl-a" text-anchor="middle">gates green</text>
+        <path d="M792,140 H854"  class="edge-a" marker-end="url(#m2)"/><text x="823"  y="130" class="lbl lbl-a" text-anchor="middle">assigned</text>
+        <path d="M982,140 H1064" class="edge-h" marker-end="url(#m2h)"/><text x="1023" y="130" class="lbl lbl-h" text-anchor="middle">approved</text>
+
+        <text x="920" y="184" class="lbl lbl-h" text-anchor="middle">hours → days</text>
+        <text x="920" y="197" class="lbl lbl-h" text-anchor="middle">process may restart here</text>
+
+        <!-- retry loop -->
+        <path d="M570,162 V200 H410 V166" class="edge-w" marker-end="url(#m2w)"/>
+        <text x="490" y="192" class="lbl lbl-w" text-anchor="middle">gate failed · retry (budget − 1)</text>
+
+        <!-- escalate -->
+        <path d="M490,200 V256" class="edge-w" marker-end="url(#m2w)"/>
+        <text x="498" y="248" class="lbl lbl-w">budget spent</text>
+        <rect x="365" y="260" width="150" height="44" rx="3" class="box-w"/>
+        <text x="440" y="287" class="ttl-s" text-anchor="middle">ESCALATED</text>
+
+        <!-- feedback loop -->
+        <path d="M890,162 V300 H819" class="edge-h" marker-end="url(#m2h)"/>
+        <text x="826" y="326" class="lbl lbl-h">comment webhook</text>
+        <rect x="665" y="278" width="150" height="44" rx="3" class="box-a"/>
+        <text x="740" y="305" class="ttl-s" text-anchor="middle">ADDRESS_FEEDBACK</text>
+        <path d="M665,300 H570 V166" class="edge-a" marker-end="url(#m2)"/>
+        <text x="578" y="230" class="lbl lbl-a">re-run gates</text>
+
+        <!-- abandoned -->
+        <path d="M950,162 V300 H1054" class="edge" marker-end="url(#m2n)"/>
+        <text x="962" y="290" class="lbl">closed, no merge</text>
+        <rect x="1058" y="278" width="124" height="44" rx="3" class="box2"/>
+        <text x="1120" y="305" class="ttl-s" text-anchor="middle">ABANDONED</text>
+
+        <!-- legend -->
+        <path d="M24,368 H56" class="edge-a"/><text x="64" y="372" class="lbl">agent-driven</text>
+        <path d="M190,368 H222" class="edge-h"/><text x="230" y="372" class="lbl">human-gated</text>
+        <path d="M362,368 H394" class="edge-w"/><text x="402" y="372" class="lbl">failure &amp; escalation</text>
+        <rect x="556" y="360" width="14" height="14" rx="2" class="box-p"/><text x="578" y="372" class="lbl">terminal — merged</text>
+      </svg>
+    </div>
+    <figcaption><b>Two loops carry all the value.</b> The tight one — <code>IMPLEMENT ⇄ VERIFY</code> — is the agent debugging itself against real gate output, and it is metered: every failed attempt decrements a retry budget, so a task escalates to a human rather than spiralling. The wide one — <code>AWAITING_REVIEW → ADDRESS_FEEDBACK</code> — is the one that makes the tool feel like a colleague. Resuming it needs a written <b>handoff record</b> in the task store (decisions made, files touched, open questions, gate history), because by Thursday the Monday context window is gone.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <p class="eyebrow">Figure 3 · Gate ladder</p>
+  <h2>Nothing reaches a human until it's green</h2>
+  <div class="prose">
+    <p>The gate ladder is your Definition of Done made executable. Four of the five rungs are identical across every task type — they're just your existing CI, run early and locally. The fourth rung is the one you design per recipe, and it is the entire reason a given task can be delegated at all.</p>
+  </div>
+
+  <figure>
+    <div class="scroll">
+      <svg class="d" viewBox="0 0 1220 350" role="img" aria-label="Gate ladder: the agent diff passes through build, static analysis, tests, a recipe-specific oracle, and diff policy before a PR opens. Any gate failure routes down to a shared bus that returns failing output to the agent and decrements the retry budget; when the budget reaches zero it escalates to a human.">
+        <defs>
+          <marker id="m3" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd-a"/></marker>
+          <marker id="m3w" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto"><polygon points="0,0 10,4 0,8" class="hd-w"/></marker>
+        </defs>
+
+        <text x="780" y="66" class="lbl lbl-a" text-anchor="middle">the only rung that changes per recipe</text>
+        <path d="M780,72 V82" class="edge-a" marker-end="url(#m3)"/>
+
+        <rect x="24" y="88" width="116" height="68" rx="3" class="box2"/>
+        <text x="38" y="110" class="ttl">agent diff</text>
+        <text x="38" y="126" class="sub">uncommitted</text>
+
+        <rect x="174" y="88" width="144" height="68" rx="3" class="box"/>
+        <text x="188" y="110" class="ttl">BUILD</text>
+        <text x="188" y="126" class="sub">compiles on target SDK</text>
+
+        <rect x="352" y="88" width="144" height="68" rx="3" class="box"/>
+        <text x="366" y="110" class="ttl">STATIC</text>
+        <text x="366" y="126" class="sub">lint · types · secrets</text>
+
+        <rect x="530" y="88" width="144" height="68" rx="3" class="box"/>
+        <text x="544" y="110" class="ttl">TESTS</text>
+        <text x="544" y="126" class="sub">unit + targeted suite</text>
+
+        <rect x="708" y="88" width="144" height="68" rx="3" class="box-focus"/>
+        <text x="722" y="110" class="ttl">ORACLE</text>
+        <text x="722" y="126" class="sub">recipe-specific</text>
+        <text x="722" y="142" class="sub">a11y audit · snapshot</text>
+
+        <rect x="886" y="88" width="144" height="68" rx="3" class="box"/>
+        <text x="900" y="110" class="ttl">DIFF POLICY</text>
+        <text x="900" y="126" class="sub">scope · size · paths</text>
+
+        <rect x="1064" y="88" width="132" height="68" rx="3" class="box-p"/>
+        <text x="1078" y="110" class="ttl">PR opens</text>
+        <text x="1078" y="126" class="sub">humans notified</text>
+
+        <path d="M140,122 H170"  class="edge-a" marker-end="url(#m3)"/>
+        <path d="M318,122 H348"  class="edge-a" marker-end="url(#m3)"/>
+        <path d="M496,122 H526"  class="edge-a" marker-end="url(#m3)"/>
+        <path d="M674,122 H704"  class="edge-a" marker-end="url(#m3)"/>
+        <path d="M852,122 H882"  class="edge-a" marker-end="url(#m3)"/>
+        <path d="M1030,122 H1060" class="edge-a" marker-end="url(#m3)"/>
+
+        <!-- fail bus -->
+        <path d="M246,156 V224 M424,156 V224 M602,156 V224 M780,156 V224 M958,156 V224" class="edge-w"/>
+        <path d="M958,224 H84 V162" class="edge-w" marker-end="url(#m3w)"/>
+        <text x="600" y="244" class="lbl lbl-w" text-anchor="middle">failing output + logs return to the agent · budget − 1</text>
+
+        <path d="M300,224 V276" class="edge-w" marker-end="url(#m3w)"/>
+        <text x="308" y="256" class="lbl lbl-w">budget = 0</text>
+        <rect x="200" y="280" width="200" height="44" rx="3" class="box-w"/>
+        <text x="300" y="300" class="ttl-s" text-anchor="middle">ESCALATE TO HUMAN</text>
+        <text x="300" y="316" class="sub" text-anchor="middle">with the full trajectory</text>
+      </svg>
+    </div>
+    <figcaption><b>A gate is only useful if its failure is legible to a model.</b> “Build failed” teaches the agent nothing; a compiler diagnostic with a file and line, a named failing test, or a snapshot diff at a specific Dynamic Type size teaches it everything. Where a gate emits vague output, wrapping it to emit structured failures buys more autonomy than any prompt change will.</figcaption>
+  </figure>
+
+  <h3>The oracle is the product decision</h3>
+  <div class="prose"><p>Pick your first recipes by how good an oracle you can write for them, not by how much time they'd save. Three that map onto the requests you already get:</p></div>
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Recipe</th><th>Trigger</th><th>Write access</th><th>Rung 4 — the oracle</th><th>Launch autonomy</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">mr-review@v1</td>
+          <td>MR opened, or <code>agent:review</code></td>
+          <td><span class="chip n">none</span></td>
+          <td>Offline: agreement rate against what human reviewers actually flagged on sampled MRs</td>
+          <td>suggest-only</td>
+        </tr>
+        <tr>
+          <td class="mono">component-a11y-prep@v3</td>
+          <td>Jira label <code>agent:a11y-prep</code></td>
+          <td>branch, component path only</td>
+          <td>XCUITest a11y audit + VoiceOver label coverage + Dynamic Type snapshot diff at M/XXL/AX5</td>
+          <td>plan-approval</td>
+        </tr>
+        <tr>
+          <td class="mono">intake-fix@v2</td>
+          <td>Jira label <code>agent:fix</code></td>
+          <td>branch, allowlisted paths</td>
+          <td>A failing repro test written <em>first</em> and reviewed as part of the plan, then turned green</td>
+          <td>plan-approval</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose"><p style="margin-top:16px">Ship <code>mr-review</code> first. It is read-only so its blast radius is zero, it earns the team's trust before you ask them to accept agent-authored diffs, and every reviewer reaction to it becomes labelled data for the two recipes that follow.</p></div>
+</section>
+
+<section>
+  <p class="eyebrow">Figure 4 · Context budget</p>
+  <h2>What's in the window, and what it costs</h2>
+  <div class="prose">
+    <p>Order the context window stable-to-volatile so a cache prefix can actually form, and pull specifics in through tool calls rather than pre-stuffing them. Two mechanisms do the rest of the work: <strong>sub-agents</strong> that fan out to search and return conclusions instead of file dumps, and <strong>compaction</strong> that checkpoints a long run into a structured handoff note — the same note the state machine needs to resume after review.</p>
+  </div>
+
+  <figure class="narrow">
+    <div class="scroll">
+      <svg class="d" viewBox="0 0 680 420" role="img" aria-label="Context window composition in four tiers: recipe playbook and repo conventions, then TaskSpec and acceptance criteria, both above a cache prefix boundary; below it, retrieved code fetched by tool call, and the volatile working set of diff, test output and notes.">
+        <text x="32" y="40" class="hdr">ONE AGENT TURN — WHAT'S IN THE WINDOW</text>
+
+        <rect x="32" y="64" width="400" height="88" rx="3" class="box-focus"/>
+        <text x="48" y="94" class="ttl">Recipe playbook + repo conventions</text>
+        <text x="48" y="114" class="sub">gates, tool contract, coding standards,</text>
+        <text x="48" y="130" class="sub">design-system rules, PR template</text>
+        <text x="446" y="112" class="lbl lbl-a">cached · stable</text>
+
+        <rect x="32" y="152" width="400" height="72" rx="3" class="box-focus"/>
+        <text x="48" y="180" class="ttl">TaskSpec · ticket · acceptance criteria</text>
+        <text x="48" y="200" class="sub">identical on every turn of this task</text>
+        <text x="446" y="190" class="lbl lbl-a">cached · per task</text>
+
+        <path d="M16,224 H664" class="edge-d"/>
+        <text x="664" y="240" class="lbl lbl-a" text-anchor="end">▲ cache prefix ends here</text>
+
+        <rect x="32" y="248" width="400" height="72" rx="3" class="box"/>
+        <text x="48" y="276" class="ttl">Retrieved: code, past PRs, contracts</text>
+        <text x="48" y="296" class="sub">fetched by tool call, never pre-stuffed</text>
+        <text x="446" y="286" class="lbl">tool-fetched</text>
+
+        <rect x="32" y="332" width="400" height="72" rx="3" class="box2"/>
+        <text x="48" y="360" class="ttl">Working set: diff, test output, notes</text>
+        <text x="48" y="380" class="sub">changes every turn · compacted on overflow</text>
+        <text x="446" y="370" class="lbl">volatile</text>
+      </svg>
+    </div>
+    <figcaption><b>The bottom two tiers are where runs go wrong.</b> An agent that greps its way through a repo with the whole tree in context will exhaust its window before it writes a line; one that delegates the search and keeps only the answer will not. Budget and meter this per recipe — max tokens, max tool calls, max wall clock, hard cost ceiling — and enforce it in the orchestrator, not in the prompt.</figcaption>
+  </figure>
+
+  <div class="warnbox">
+    <p class="h">Measure the right number</p>
+    <p>Track <strong>cost per merged PR</strong>, never cost per token. A $12 run that merges on the first review round is worth far more than a $2 run that gets abandoned, and optimising the token number directly will push you toward the second.</p>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">Worked example</p>
+  <h2>“Get the iOS Accordion ready for accessibility review”</h2>
+  <div class="prose"><p>One request traced through every box above. This is the shape of a run you should be able to read end-to-end in the trajectory viewer.</p></div>
+
+  <ol class="trace">
+    <li>
+      <span class="st">TRIGGER</span>
+      <span class="st-b">Jira automation fires on DS-4127</span>
+      <p>The ticket carries the label <code>agent:a11y-prep</code>. Jira posts to <code>/intake</code>. No human has typed a prompt.</p>
+    </li>
+    <li>
+      <span class="st">INTAKE</span>
+      <span class="st-b">Normalize, or bounce</span>
+      <p>Resolves the ticket, matches recipe <code>component-a11y-prep@v3</code>, maps “Accordion” to <code>Sources/PDS/Components/Accordion/</code>, sets risk tier R2. The quality gate checks the ticket names a component and a target conformance level — if it doesn't, the task goes to <code>CLARIFY</code> and asks in the ticket rather than guessing.</p>
+    </li>
+    <li>
+      <span class="st">POLICY</span>
+      <span class="st-b">Budget and tool ACL are bound now</span>
+      <p>400k tokens, 45 minutes, $8, 5 gate retries. Allowed: read the repo, edit under the component and its test directory, run <code>xcodebuild</code>, run the a11y audit, read the Figma node, comment on Jira. Denied: <code>Package.swift</code>, network egress, merge.</p>
+    </li>
+    <li>
+      <span class="st">PLAN</span>
+      <span class="st-b">Read first, propose second</span>
+      <p>In a fresh <code>ios-16.4</code> container the agent reads the component, the a11y playbook, the design contract, and the two most recently merged a11y PRs. It proposes: accessibility labels and values on the header control, expanded/collapsed exposed as traits, a hint on the disclosure affordance, Dynamic Type wiring, and six new audit assertions.</p>
+    </li>
+    <li class="human">
+      <span class="st">HUMAN GATE — TIER R2</span>
+      <span class="st-b">Plan posted to the ticket for approval</span>
+      <p>Cheap to review, cheap to redirect. Catching a wrong plan here costs one comment; catching it at PR costs a review round. This gate disappears once the recipe earns tier 2 autonomy.</p>
+    </li>
+    <li>
+      <span class="st">IMPLEMENT ⇄ VERIFY</span>
+      <span class="st-b">Climb the ladder, twice</span>
+      <p>Edits, then build → static → unit → oracle → diff policy. The Dynamic Type snapshot fails at AX5 on the first pass; the agent reads the diff image path and the failing size from the gate output, fixes the layout, and re-runs. Two of five retries spent.</p>
+    </li>
+    <li>
+      <span class="st">PR_OPEN</span>
+      <span class="st-b">A PR built to be reviewed, not just merged</span>
+      <p>Structured body: what changed, which success criteria it addresses, the actual audit output, and — the section reviewers come to rely on — <em>what I was unsure about</em>: “nested accordions have no design contract for trait propagation; left unchanged.” Plus what it deliberately did not touch, and a link to the full trajectory.</p>
+    </li>
+    <li class="human">
+      <span class="st">AWAITING_REVIEW → ADDRESS_FEEDBACK</span>
+      <span class="st-b">Three comments, three different classifications</span>
+      <p>The webhook resumes the task from its handoff record. The agent classifies each thread: one <em>change requested</em> (applied, gates re-run), one <em>nit</em> (applied), one <em>out of scope</em> — it files a follow-up ticket and says so in the thread rather than silently widening the diff. Scope expansion during review is a hard stop.</p>
+    </li>
+    <li>
+      <span class="st">MERGED</span>
+      <span class="st-b">The run becomes training data</span>
+      <p>Trajectory, verdict, cost, and review-round count are written to the log. The reviewer's correction on the out-of-scope call becomes a playbook rule and eval case #63, so the next run doesn't relitigate it.</p>
+    </li>
+  </ol>
+</section>
+
+<section>
+  <p class="eyebrow">Schema</p>
+  <h2>The two objects you'll maintain forever</h2>
+  <div class="prose">
+    <p>A <strong>TaskSpec</strong> is one unit of work, created by intake and never mutated by the agent. A <strong>recipe</strong> is the versioned policy for a class of work — this is the artefact your team actually iterates on, and it belongs in the repo it operates on, under review, like any other code.</p>
+  </div>
+
+  <p class="codelabel">TaskSpec — emitted by intake, bound by policy</p>
+<pre>{
+  <span class="k">"task_id"</span>: <b>"tsk_01J8QK4M2C"</b>,
+  <span class="k">"recipe"</span>: <b>"component-a11y-prep@v3"</b>,
+  <span class="k">"source"</span>: { <span class="k">"system"</span>: "jira", <span class="k">"key"</span>: "DS-4127" },
+  <span class="k">"intent"</span>: "Get the iOS Accordion ready for accessibility review",
+  <span class="k">"targets"</span>: {
+    <span class="k">"repo"</span>: "pds-ios",
+    <span class="k">"component"</span>: "PDSAccordion",
+    <span class="k">"paths"</span>: ["Sources/PDS/Components/Accordion/**", "Tests/PDSTests/Accordion/**"]
+  },
+  <span class="k">"acceptance"</span>: {
+    <span class="k">"criteria"</span>: ["1.3.1", "2.4.6", "4.1.2"],
+    <span class="k">"must_pass"</span>: ["build", "static", "unit", "a11y_audit",
+                    "label_coverage", "dynamic_type_snapshot", "diff_policy"]
+  },
+  <span class="k">"risk_tier"</span>: <b>2</b>,
+  <span class="k">"autonomy"</span>: <b>"plan_approval"</b>,
+  <span class="k">"budget"</span>: { <span class="k">"tokens"</span>: 400000, <span class="k">"wall_clock_s"</span>: 2700,
+               <span class="k">"usd"</span>: 8.00, <span class="k">"gate_retries"</span>: 5 },
+  <span class="k">"tools"</span>: {
+    <span class="k">"allow"</span>: ["repo.read", "repo.edit", "xcodebuild.run", "a11y.audit",
+               "figma.read_node", "jira.comment", "git.branch", "git.push", "pr.open"],
+    <span class="k">"deny"</span>:  ["repo.edit:Package.swift", "net.egress", "pr.merge"]
+  },
+  <span class="k">"reviewers"</span>: ["@ios-a11y-guild"],
+  <span class="k">"trace_id"</span>: "trj_9F2A7C"
+}</pre>
+
+  <p class="codelabel">Recipe — versioned, reviewed, lives beside the code it edits</p>
+<pre>{
+  <span class="k">"recipe"</span>: <b>"component-a11y-prep"</b>, <span class="k">"version"</span>: 3,
+  <span class="k">"oracle"</span>: [
+    { <span class="k">"gate"</span>: "a11y_audit",
+      <span class="k">"run"</span>: "xcodebuild test -only-testing:PDSUITests/A11yAudit",
+      <span class="k">"fail_on"</span>: "any violation" },
+    { <span class="k">"gate"</span>: "label_coverage",
+      <span class="k">"run"</span>: "scripts/a11y-label-coverage --scope $COMPONENT --min 1.0" },
+    { <span class="k">"gate"</span>: "dynamic_type_snapshot",
+      <span class="k">"run"</span>: "scripts/snapshot --sizes M,XXL,AX5",
+      <span class="k">"fail_on"</span>: "pixel_delta &gt; 0.2% || untested size" }
+  ],
+  <span class="k">"diff_policy"</span>: { <span class="k">"max_changed_lines"</span>: 400,
+                   <span class="k">"paths_allow"</span>: ["Sources/PDS/Components/$COMPONENT/**", "Tests/**"] },
+  <span class="k">"context"</span>: { <span class="k">"always"</span>: ["docs/a11y-playbook.md", "docs/design-contracts/$COMPONENT.md"],
+               <span class="k">"retrieve"</span>: ["last 2 merged PRs labelled a11y"] },
+  <span class="k">"pr_template"</span>: "templates/a11y-pr.md",
+  <span class="k">"escalate_to"</span>: "@ios-a11y-guild"
+}</pre>
+</section>
+
+<section>
+  <p class="eyebrow">Policy</p>
+  <h2>Autonomy is earned per recipe, capped per risk</h2>
+  <div class="prose"><p>Two independent dials. A recipe earns autonomy by demonstrated performance; the code it touches caps how far that autonomy can go, regardless of performance.</p></div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Autonomy tier</th><th>What the agent may do</th><th>Promotion evidence required</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">T0 · suggest-only</td><td>Comments and analysis. No branch, no diff.</td><td>—</td></tr>
+        <tr><td class="mono">T1 · plan-approval</td><td>Branch and PR, but only after a human approves the plan.</td><td>≥ 70% of its comments accepted across 30 MRs at T0.</td></tr>
+        <tr><td class="mono">T2 · autonomous PR</td><td>Branch and PR with no plan gate. Humans still merge.</td><td>Median ≤ 1.5 review rounds across 25 PRs at T1.</td></tr>
+        <tr><td class="mono">T3 · auto-merge on green</td><td>Merges itself when every gate passes.</td><td>Only for recipes with a <em>total</em> oracle — dependency bumps, codemods, generated code. Never for R1.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tablewrap" style="margin-top:20px">
+    <table>
+      <thead><tr><th>Risk tier</th><th>Code it covers</th><th>Autonomy ceiling</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip r1">R1</span></td><td>Auth, payments, data migrations, cryptography, anything touching PII</td><td class="mono">T0 — permanently</td></tr>
+        <tr><td><span class="chip r2">R2</span></td><td>Shared components, public API surface, build configuration</td><td class="mono">T2</td></tr>
+        <tr><td><span class="chip r3">R3</span></td><td>Leaf components, tests, docs, dependency bumps, codemods</td><td class="mono">T3</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="warnbox">
+    <p class="h">Ticket text and PR comments are untrusted input</p>
+    <p>Both flow straight into the prompt and both are writable by anyone with a Jira or repo account. Treat them as data, never as instructions: text arriving from a ticket or a comment must never be able to widen the tool ACL, change the path allowlist, raise the budget, or trigger a merge. Those are orchestrator decisions, made before the agent starts and immutable for the life of the run.</p>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">Build order</p>
+  <h2>What to have working, and when</h2>
+  <div class="phases">
+    <div class="phase">
+      <span class="wk">Weeks 1–3</span>
+      <h4>Make the repo agent-runnable</h4>
+      <p>One-command bootstrap, hermetic tests, targeted test selection, structured failure output from every scanner. Encode the a11y definition as an executable suite. Mine past PRs into a golden eval set.</p>
+      <p class="done"><b>Done when</b> a new engineer — and a container — can go from clone to green suite in one command, and you have ~100 labelled cases.</p>
+    </div>
+    <div class="phase">
+      <span class="wk">Weeks 4–6</span>
+      <h4>Ship mr-review, read-only</h4>
+      <p>Two or three repos, T0 autonomy, no write access anywhere. Build the trajectory viewer alongside it — you will need it far more than you expect.</p>
+      <p class="done"><b>Done when</b> you can state the comment-acceptance rate from real data, and reviewers ask for the bot on more repos.</p>
+    </div>
+    <div class="phase">
+      <span class="wk">Weeks 7–10</span>
+      <h4>Durable orchestrator + sandbox</h4>
+      <p>The state machine, the runner, the gate ladder, and <code>component-a11y-prep</code> at T1. This is where the full build → test → PR lifecycle actually lands, on the recipe with the strongest oracle.</p>
+      <p class="done"><b>Done when</b> a Jira label produces a green, reviewable PR with no human touching a keyboard in between.</p>
+    </div>
+    <div class="phase">
+      <span class="wk">Weeks 11–13</span>
+      <h4>Close the review loop</h4>
+      <p>Comment webhook, handoff records, feedback classification. Then <code>intake-fix</code> — gated behind an intake quality check that bounces underspecified tickets back to their author.</p>
+      <p class="done"><b>Done when</b> a reviewer's comment is addressed without anyone re-running the agent by hand.</p>
+    </div>
+  </div>
+
+  <h3>The five numbers to publish</h3>
+  <dl class="metrics">
+    <div class="metric"><dt>Autonomous merge rate</dt><dd>Share of agent PRs merged with no human commits pushed on top.</dd></div>
+    <div class="metric"><dt>Review rounds per PR</dt><dd>Median. The single best proxy for whether the agent understood the task.</dd></div>
+    <div class="metric"><dt>Human edit distance</dt><dd>Lines a reviewer changed on the agent's diff before merging.</dd></div>
+    <div class="metric"><dt>Escape rate</dt><dd>Defects in production traced back to agent-authored PRs, against your baseline.</dd></div>
+    <div class="metric"><dt>Cost per merged PR</dt><dd>Fully loaded — including abandoned runs, which is the point.</dd></div>
+  </dl>
+</section>
+
+<section>
+  <p class="eyebrow">The hard part</p>
+  <h2>It won't be the agent</h2>
+  <div class="prose">
+    <p>The binding constraint is task specification quality. Most tickets in most backlogs do not contain enough information for a competent human to work unsupervised either — they rely on the tribal context an assignee already has. An agent has none of it, and will confidently produce something plausible and wrong.</p>
+    <p>So budget real effort for the intake gate: the part of the system that detects an underspecified request and asks a question instead of guessing. It is unglamorous, it is where the <code>CLARIFY</code> state in Figure 2 earns its place, and it will do more for your merge rate than any model upgrade.</p>
+  </div>
+</section>
+
+<hr class="endrule">
+<p class="colophon">
+  Agent Delivery Plane · architecture note v0.1<br>
+  Figures are hand-drawn SVG. Worked example traces recipe <code>component-a11y-prep@v3</code> against <code>pds-ios</code>.
+</p>
+
+</div>
+</body>
+</html>

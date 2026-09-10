@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     CACHE_DIR: str = "document_cache"
     CACHE_EXPIRE_DAYS: int = 7
 
+    # Pre-downloaded docling model artifacts (avoids Hugging Face downloads
+    # at runtime). Falls back to ./docling_models if unset.
+    DOCLING_ARTIFACTS_PATH: str | None = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

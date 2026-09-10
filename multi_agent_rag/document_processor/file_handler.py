@@ -4,7 +4,9 @@ import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List
-from docling.document_converter import DocumentConverter
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 from config import constants
 from config.settings import settings
@@ -15,6 +17,22 @@ class DocumentProcessor:
         self.headers = [("#", "Header 1"), ("##", "Header 2")]
         self.cache_dir = Path(settings.CACHE_DIR)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use pre-downloaded docling models if available, so no Hugging Face
+        # download is attempted at runtime.
+        artifacts_path = Path(
+            settings.DOCLING_ARTIFACTS_PATH
+            or Path(__file__).resolve().parent.parent / "docling_models"
+        )
+        self.docling_artifacts_path = str(artifacts_path) if artifacts_path.is_dir() else None
+        if self.docling_artifacts_path:
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+            logger.info(f"Using local docling models from {self.docling_artifacts_path}")
+        else:
+            logger.warning(
+                "No local docling models found; docling will try to download "
+                "from Hugging Face on first use."
+            )
         
     def validate_files(self, files: List) -> None:
         """Validate the total size of the uploaded files."""
@@ -64,7 +82,13 @@ class DocumentProcessor:
             logger.warning(f"Skipping unsupported file type: {file.name}")
             return []
 
-        converter = DocumentConverter()
+        if self.docling_artifacts_path:
+            pipeline_options = PdfPipelineOptions(artifacts_path=self.docling_artifacts_path)
+            converter = DocumentConverter(
+                format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
+            )
+        else:
+            converter = DocumentConverter()
         markdown = converter.convert(file.name).document.export_to_markdown()
         splitter = MarkdownHeaderTextSplitter(self.headers)
         return splitter.split_text(markdown)
